@@ -48,7 +48,7 @@
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center space-x-2">
             <span class="px-2.5 py-1 rounded bg-indigo-500/20 text-indigo-400 text-xs font-bold border border-indigo-500/30" id="noticeTypeBadge">📌 실시간 지침</span>
-            <span class="text-xs text-slate-400" id="noticeTimeText">방금 전</span>
+            <span class="text-xs text-slate-400" id="noticeTimeText">대기 중</span>
           </div>
           <!-- 원클릭 복사 버튼 -->
           <button id="copyCommandBtn" onclick="copyCurrentCommand()" class="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-sky-500 hover:bg-sky-400 text-white transition flex items-center space-x-1.5 shadow-md shadow-sky-500/20">
@@ -68,13 +68,10 @@
             <span>⚙️ 강사 전용 컨트롤 패널</span>
           </h2>
           
-          <!-- 화면 공유 및 웹캠 컨트롤 버튼 -->
           <div class="flex items-center space-x-2">
             <button onclick="startScreenShare()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition">🖥️ 화면 공유</button>
             <button onclick="stopScreenShare()" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold transition">화면 중지</button>
-            
             <span class="text-slate-700">|</span>
-
             <button id="webcamToggleBtn" onclick="toggleWebcam()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition flex items-center space-x-1">
               <span>📷 웹캠 켜기</span>
             </button>
@@ -83,27 +80,24 @@
 
         <!-- 커맨드 발행창 -->
         <div class="space-y-2">
-          <label class="text-xs text-slate-300 font-semibold">청중에게 보낼 커맨드/공지사항 작성</label>
+          <label class="text-xs text-slate-300 font-semibold">청중에게 보낼 커맨드/공지사항 작성 (Firebase 클라우드 실시간 전송)</label>
           <div class="flex gap-2">
-            <input id="hostNoticeInput" type="text" placeholder="예: git clone https://github.com/... 또는 터미널 명령어를 입력하세요" class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-xs focus:outline-none focus:border-amber-500">
+            <input id="hostNoticeInput" type="text" placeholder="예: git clone https://... 또는 터미널 명령어를 입력하세요" class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-xs focus:outline-none focus:border-amber-500">
             <button onclick="publishNotice()" class="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs transition">발행하기</button>
           </div>
         </div>
       </div>
 
-      <!-- 3. 화면 공유 및 강사 웹캠 뷰포트 (오버레이 PiP 구조) -->
+      <!-- 3. 화면 공유 및 강사 웹캠 뷰포트 -->
       <div class="relative bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden aspect-video flex items-center justify-center shadow-2xl">
-        <!-- 화면 공유 비디오 -->
         <video id="screenVideo" autoplay playsinline class="w-full h-full object-contain hidden"></video>
         
-        <!-- 대기 화면 -->
         <div id="screenPlaceholder" class="text-center p-6 space-y-2">
           <div class="text-4xl text-slate-600">🖥️</div>
           <p class="text-sm font-semibold text-slate-400">강의 화면이 대기 상태입니다.</p>
           <p class="text-xs text-slate-600">강사가 화면 공유를 시작하면 여기에 자동으로 표시됩니다.</p>
         </div>
 
-        <!-- 강사 웹캠 오버레이 (화면 우측 하단에 고정 표시) -->
         <div id="webcamContainer" class="hidden absolute bottom-4 right-4 w-44 md:w-56 aspect-video rounded-xl overflow-hidden border-2 border-emerald-500/80 shadow-2xl bg-slate-900 z-20 transition-all">
           <video id="webcamVideo" autoplay playsinline muted class="w-full h-full object-cover"></video>
           <div class="absolute top-1.5 left-2 px-1.5 py-0.5 rounded bg-black/60 backdrop-blur text-[10px] text-emerald-400 font-bold">강사 캠</div>
@@ -116,7 +110,7 @@
     <div class="w-full lg:w-96 bg-slate-900 border-t lg:border-t-0 lg:border-l border-slate-800 flex flex-col h-[500px] lg:h-auto">
       <div class="p-4 border-b border-slate-800 flex items-center justify-between">
         <h2 class="text-sm font-bold text-slate-200">실시간 채팅</h2>
-        <span class="text-xs text-slate-400">참여자 소통창</span>
+        <span class="text-xs text-emerald-400 font-medium">● Firebase 연결됨</span>
       </div>
 
       <div id="chatMessages" class="flex-1 p-4 overflow-y-auto space-y-3">
@@ -130,7 +124,7 @@
       </div>
 
       <div class="p-3 border-t border-slate-800 bg-slate-900/50">
-        <form onsubmit="handleSendMessage(event)" class="flex gap-2">
+        <form id="chatForm" class="flex gap-2">
           <input id="chatInput" type="text" placeholder="메시지를 입력하세요..." class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-sky-500">
           <button type="submit" class="px-3.5 py-2 bg-sky-500 hover:bg-sky-400 text-white rounded-xl text-xs font-bold transition">전송</button>
         </form>
@@ -139,17 +133,140 @@
 
   </main>
 
+  <!-- Firebase 공식 SDK (Modular v10+) 로드 -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { 
+      getFirestore, 
+      collection, 
+      addDoc, 
+      doc, 
+      setDoc, 
+      onSnapshot, 
+      query, 
+      orderBy, 
+      limit, 
+      serverTimestamp 
+    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+    // ========================================================
+    // ★ [중요] 여기에 Firebase 콘솔에서 발급받은 설정값을 붙여넣으세요.
+    // ========================================================
+    const firebaseConfig = {
+      apiKey: "AIzaSyAg2HtVa26rr7t03Ao6MLgZq6tJBUh20p0",
+      authDomain: "liveclass-lecture.firebaseapp.com",
+      projectId: "liveclass-lecture",
+      storageBucket: "liveclass-lecture.firebasestorage.app",
+      messagingSenderId: "708172392387",
+      appId: "1:708172392387:web:aa63baa38dbe93e57abf76"
+    };
+
+    // Firebase 초기화
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    // ========================================================
+    // 1. Firebase 실시간 지침(공지) 동기화
+    // ========================================================
+    const noticeDocRef = doc(db, "live_session", "current_notice");
+
+    // 공지 실시간 구독 (모든 청중/강사 기기에 즉시 반영)
+    onSnapshot(noticeDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        document.getElementById('commandText').textContent = data.text || "강사의 지침을 기다려주세요.";
+        if (data.time) {
+          document.getElementById('noticeTimeText').textContent = data.time;
+        }
+      }
+    });
+
+    // 강사가 공지 발행 시 Firestore에 저장
+    window.publishNotice = async function() {
+      const input = document.getElementById('hostNoticeInput');
+      const text = input.value.trim();
+      if (!text) return;
+
+      try {
+        await setDoc(noticeDocRef, {
+          text: text,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          updatedAt: serverTimestamp()
+        });
+        input.value = '';
+      } catch (err) {
+        console.error("공지 저장 실패:", err);
+        alert("공지 전송에 실패했습니다. Firebase 설정을 확인해주세요.");
+      }
+    };
+
+    // ========================================================
+    // 2. Firebase 실시간 채팅 동기화 및 저장
+    // ========================================================
+    const messagesColRef = collection(db, "chat_messages");
+    const chatQuery = query(messagesColRef, orderBy("createdAt", "asc"), limit(100));
+
+    // 실시간 메시지 수신 및 새로고침 시 복원
+    onSnapshot(chatQuery, (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === "added") {
+          appendMessage(change.doc.data());
+        }
+      });
+    });
+
+    // 메시지 전송
+    document.getElementById('chatForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const input = document.getElementById('chatInput');
+      const text = input.value.trim();
+      const user = document.getElementById('userNameInput').value.trim() || '참여자';
+
+      if (!text) return;
+
+      try {
+        await addDoc(messagesColRef, {
+          user: user,
+          text: text,
+          isHost: window.isHost || false,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          createdAt: serverTimestamp()
+        });
+        input.value = '';
+      } catch (err) {
+        console.error("채팅 전송 실패:", err);
+        alert("메시지 전송에 실패했습니다.");
+      }
+    });
+
+    function appendMessage(data) {
+      const container = document.getElementById('chatMessages');
+      const div = document.createElement('div');
+      div.className = "bg-slate-800/40 rounded-xl p-3 border border-slate-800/80";
+      
+      div.innerHTML = `
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-xs font-bold ${data.isHost ? 'text-amber-400' : 'text-sky-400'}">${escapeHtml(data.user)} ${data.isHost ? '👑' : ''}</span>
+          <span class="text-[10px] text-slate-500">${data.time || ''}</span>
+        </div>
+        <p class="text-xs text-slate-200 selectable-text">${escapeHtml(data.text)}</p>
+      `;
+      container.appendChild(div);
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function escapeHtml(string) {
+      return String(string).replace(/[&<>"']/g, s => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[s]);
+    }
+  </script>
+
+  <!-- 강사 인증 및 화면/웹캠 제어 스크립트 -->
   <script>
-    // ==========================================
-    // 1. 강사 모드 비밀번호 보안 설정
-    // ==========================================
     const HOST_PASSWORD_HASH = "257c3c6176d1322a78c4563f14f6d2927bf8e894b88307239933e5290cafea98";
     
-    let isHost = false;
+    window.isHost = false;
     let screenStream = null;
     let webcamStream = null;
-
-    const channel = new BroadcastChannel('liveclass_channel');
 
     async function sha256(message) {
       const msgBuffer = new TextEncoder().encode(message);
@@ -159,9 +276,9 @@
     }
 
     async function handleModeSwitch() {
-      if (isHost) {
+      if (window.isHost) {
         if (confirm("청중 모드로 전환하시겠습니까?")) {
-          isHost = false;
+          window.isHost = false;
           stopWebcam();
           stopScreenShare();
           updateUIMode();
@@ -176,7 +293,7 @@
 
       if (inputHash === HOST_PASSWORD_HASH) {
         alert("강사 인증이 완료되었습니다.");
-        isHost = true;
+        window.isHost = true;
         updateUIMode();
       } else {
         alert("비밀번호가 일치하지 않습니다.");
@@ -189,7 +306,7 @@
       const lockIcon = document.getElementById('lockIcon');
       const hostPanel = document.getElementById('hostControlPanel');
 
-      if (isHost) {
+      if (window.isHost) {
         badge.textContent = "강사 모드";
         badge.className = "text-xs px-2.5 py-1 rounded-full font-semibold bg-amber-500/20 text-amber-400 border border-amber-500/30";
         btnText.textContent = "청중 모드로 전환";
@@ -202,24 +319,6 @@
         lockIcon.textContent = "🔒";
         hostPanel.classList.add('hidden');
       }
-    }
-
-    // ==========================================
-    // 2. 공지 및 커맨드 복사 엔진
-    // ==========================================
-    function publishNotice() {
-      const input = document.getElementById('hostNoticeInput');
-      const text = input.value.trim();
-      if (!text) return;
-
-      updateNoticeDisplay(text);
-      channel.postMessage({ type: 'NOTICE', payload: text });
-      input.value = '';
-    }
-
-    function updateNoticeDisplay(text) {
-      document.getElementById('commandText').textContent = text;
-      document.getElementById('noticeTimeText').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
 
     function copyCurrentCommand() {
@@ -254,9 +353,6 @@
       }
     }
 
-    // ==========================================
-    // 3. 화면 공유 및 강사 웹캠 스트림 로직
-    // ==========================================
     async function startScreenShare() {
       try {
         screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
@@ -285,7 +381,6 @@
       document.getElementById('screenPlaceholder').classList.remove('hidden');
     }
 
-    // 웹캠 켜기 / 끄기 토글
     async function toggleWebcam() {
       if (webcamStream) {
         stopWebcam();
@@ -330,52 +425,6 @@
         btn.classList.replace('hover:bg-rose-500', 'hover:bg-emerald-500');
       }
     }
-
-    // ==========================================
-    // 4. 실시간 채팅 로직
-    // ==========================================
-    function handleSendMessage(e) {
-      e.preventDefault();
-      const input = document.getElementById('chatInput');
-      const text = input.value.trim();
-      const user = document.getElementById('userNameInput').value.trim() || '참여자';
-
-      if (!text) return;
-
-      const messageData = { user, text, isHost, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
-      appendMessage(messageData);
-      channel.postMessage({ type: 'CHAT', payload: messageData });
-      input.value = '';
-    }
-
-    function appendMessage(data) {
-      const container = document.getElementById('chatMessages');
-      const div = document.createElement('div');
-      div.className = "bg-slate-800/40 rounded-xl p-3 border border-slate-800/80";
-      
-      div.innerHTML = `
-        <div class="flex items-center justify-between mb-1">
-          <span class="text-xs font-bold ${data.isHost ? 'text-amber-400' : 'text-sky-400'}">${data.user} ${data.isHost ? '👑' : ''}</span>
-          <span class="text-[10px] text-slate-500">${data.time}</span>
-        </div>
-        <p class="text-xs text-slate-200 selectable-text">${escapeHtml(data.text)}</p>
-      `;
-      container.appendChild(div);
-      container.scrollTop = container.scrollHeight;
-    }
-
-    function escapeHtml(string) {
-      return String(string).replace(/[&<>"']/g, s => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[s]);
-    }
-
-    channel.onmessage = (event) => {
-      const { type, payload } = event.data;
-      if (type === 'NOTICE') {
-        updateNoticeDisplay(payload);
-      } else if (type === 'CHAT') {
-        appendMessage(payload);
-      }
-    };
   </script>
 </body>
 </html>
