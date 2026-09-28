@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LiveClass Interact</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Pretendard', sans-serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    .selectable-text { user-select: text !important; -webkit-user-select: text !important; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col">
+
+  <!-- 상단 네비게이션 -->
+  <header class="bg-slate-900/90 border-b border-slate-800 px-6 py-3 flex items-center justify-between sticky top-0 z-40 backdrop-blur">
+    <div class="flex items-center space-x-3">
+      <span class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></span>
+      <h1 class="text-lg font-extrabold tracking-tight bg-gradient-to-r from-sky-400 to-indigo-400 bg-clip-text text-transparent">LiveClass Interact</h1>
+      <span id="roleBadge" class="text-xs px-2.5 py-1 rounded-full font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">청중 모드</span>
+    </div>
+
+    <div class="flex items-center space-x-3">
+      <!-- 닉네임 설정 -->
+      <div class="flex items-center space-x-2 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700">
+        <span class="text-xs text-slate-400 font-medium">닉네임:</span>
+        <input id="userNameInput" type="text" value="참여자" class="bg-transparent text-xs text-sky-400 font-bold focus:outline-none w-20">
+      </div>
+
+      <!-- 모드 전환 버튼 -->
+      <button id="modeSwitchBtn" onclick="handleModeSwitch()" class="px-3 py-1.5 rounded-lg text-xs font-bold border transition flex items-center space-x-1.5 bg-amber-500/10 text-amber-400 border-amber-500/30 hover:bg-amber-500/20">
+        <span id="lockIcon">🔒</span>
+        <span id="modeBtnText">강사 모드 전환</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- 메인 레이아웃 -->
+  <main class="flex-1 flex flex-col lg:flex-row overflow-hidden">
+    
+    <!-- 좌측: 화면 공유 및 공지/커맨드 영역 -->
+    <div class="flex-1 flex flex-col p-4 lg:p-6 overflow-y-auto space-y-4">
+      
+      <!-- 1. 커맨드 & 공지 뷰어 (청중 및 강사 공통 노출) -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center space-x-2">
+            <span class="px-2.5 py-1 rounded bg-indigo-500/20 text-indigo-400 text-xs font-bold border border-indigo-500/30" id="noticeTypeBadge">📌 실시간 지침</span>
+            <span class="text-xs text-slate-400" id="noticeTimeText">방금 전</span>
+          </div>
+          <!-- 원클릭 복사 버튼 -->
+          <button id="copyCommandBtn" onclick="copyCurrentCommand()" class="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-sky-500 hover:bg-sky-400 text-white transition flex items-center space-x-1.5 shadow-md shadow-sky-500/20">
+            <span>📋 복사하기</span>
+          </button>
+        </div>
+
+        <!-- 커맨드 박스 -->
+        <div class="bg-slate-950 border border-slate-800 rounded-xl p-4 font-mono text-sm text-sky-300 selectable-text break-all">
+          <pre id="commandText" class="whitespace-pre-wrap">강의가 준비 중입니다. 강사의 지침을 기다려주세요.</pre>
+        </div>
+      </div>
+
+      <!-- 2. 강사 전용 컨트롤 패널 (기본 숨김, 인증 후 노출) -->
+      <div id="hostControlPanel" class="hidden bg-slate-900/90 border border-amber-500/30 rounded-2xl p-5 shadow-xl space-y-4">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+          <h2 class="text-sm font-bold text-amber-400 flex items-center space-x-2">
+            <span>⚙️ 강사 전용 컨트롤 패널</span>
+          </h2>
+          <div class="flex items-center space-x-2">
+            <button onclick="startScreenShare()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition">🖥️ 화면 공유 시작</button>
+            <button onclick="stopScreenShare()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold transition">중지</button>
+          </div>
+        </div>
+
+        <!-- 지침 및 커맨드 발행 입력창 -->
+        <div class="space-y-2">
+          <label class="text-xs text-slate-300 font-semibold">청중에게 보낼 커맨드/공지사항 작성</label>
+          <div class="flex gap-2">
+            <input id="hostNoticeInput" type="text" placeholder="예: git clone https://github.com/... 또는 터미널 명령어를 입력하세요" class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-xs focus:outline-none focus:border-amber-500">
+            <button onclick="publishNotice()" class="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs transition">발행하기</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. 화면 공유 뷰포트 -->
+      <div class="relative bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden aspect-video flex items-center justify-center shadow-2xl">
+        <video id="screenVideo" autoplay playsinline class="w-full h-full object-contain hidden"></video>
+        <div id="screenPlaceholder" class="text-center p-6 space-y-2">
+          <div class="text-4xl text-slate-600">🖥️</div>
+          <p class="text-sm font-semibold text-slate-400">강의 화면이 대기 상태입니다.</p>
+          <p class="text-xs text-slate-600">강사가 화면 공유를 시작하면 여기에 자동으로 표시됩니다.</p>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- 우측: 실시간 채팅 및 Q&A 스트림 -->
+    <div class="w-full lg:w-96 bg-slate-900 border-t lg:border-t-0 lg:border-l border-slate-800 flex flex-col h-[500px] lg:h-auto">
+      <div class="p-4 border-b border-slate-800 flex items-center justify-between">
+        <h2 class="text-sm font-bold text-slate-200">실시간 채팅</h2>
+        <span class="text-xs text-slate-400">참여자 소통창</span>
+      </div>
+
+      <!-- 메시지 목록 -->
+      <div id="chatMessages" class="flex-1 p-4 overflow-y-auto space-y-3">
+        <div class="bg-slate-800/50 rounded-xl p-3 border border-slate-800">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-xs font-bold text-sky-400">시스템</span>
+            <span class="text-[10px] text-slate-500">안내</span>
+          </div>
+          <p class="text-xs text-slate-300">채팅창에 입장하였습니다. 질문이나 의견을 자유롭게 남겨주세요.</p>
+        </div>
+      </div>
+
+      <!-- 메시지 입력 영역 -->
+      <div class="p-3 border-t border-slate-800 bg-slate-900/50">
+        <form onsubmit="handleSendMessage(event)" class="flex gap-2">
+          <input id="chatInput" type="text" placeholder="메시지를 입력하세요..." class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-sky-500">
+          <button type="submit" class="px-3.5 py-2 bg-sky-500 hover:bg-sky-400 text-white rounded-xl text-xs font-bold transition">전송</button>
+        </form>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    // ==========================================
+    // 1. 강사 모드 비밀번호 보안 설정 (SHA-256 해시)
+    // 기본 비밀번호: 1234
+    // ==========================================
+    const HOST_PASSWORD_HASH = "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4";
+    
+    let isHost = false;
+    let localStream = null;
+
+    // 브라우저 탭 간 실시간 통신 채널
+    const channel = new BroadcastChannel('liveclass_channel');
+
+    // SHA-256 해싱 함수
+    async function sha256(message) {
+      const msgBuffer = new TextEncoder().encode(message);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    // 모드 전환 및 비밀번호 확인
+    async function handleModeSwitch() {
+      if (isHost) {
+        // 이미 강사인 경우 청중 모드로 복귀
+        if (confirm("청중 모드로 전환하시겠습니까?")) {
+          isHost = false;
+          updateUIMode();
+        }
+        return;
+      }
+
+      const inputPassword = prompt("강사 모드 비밀번호를 입력하세요:");
+      if (!inputPassword) return;
+
+      const inputHash = await sha256(inputPassword);
+
+      if (inputHash === HOST_PASSWORD_HASH) {
+        alert("강사 인증이 완료되었습니다.");
+        isHost = true;
+        updateUIMode();
+      } else {
+        alert("비밀번호가 일치하지 않습니다.");
+      }
+    }
+
+    function updateUIMode() {
+      const badge = document.getElementById('roleBadge');
+      const btnText = document.getElementById('modeBtnText');
+      const lockIcon = document.getElementById('lockIcon');
+      const hostPanel = document.getElementById('hostControlPanel');
+
+      if (isHost) {
+        badge.textContent = "강사 모드";
+        badge.className = "text-xs px-2.5 py-1 rounded-full font-semibold bg-amber-500/20 text-amber-400 border border-amber-500/30";
+        btnText.textContent = "청중 모드로 전환";
+        lockIcon.textContent = "🔓";
+        hostPanel.classList.remove('hidden');
+      } else {
+        badge.textContent = "청중 모드";
+        badge.className = "text-xs px-2.5 py-1 rounded-full font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30";
+        btnText.textContent = "강사 모드 전환";
+        lockIcon.textContent = "🔒";
+        hostPanel.classList.add('hidden');
+      }
+    }
+
+    // ==========================================
+    // 2. 공지 및 커맨드 복사 엔진
+    // ==========================================
+    function publishNotice() {
+      const input = document.getElementById('hostNoticeInput');
+      const text = input.value.trim();
+      if (!text) return;
+
+      updateNoticeDisplay(text);
+      channel.postMessage({ type: 'NOTICE', payload: text });
+      input.value = '';
+    }
+
+    function updateNoticeDisplay(text) {
+      document.getElementById('commandText').textContent = text;
+      document.getElementById('noticeTimeText').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function copyCurrentCommand() {
+      const text = document.getElementById('commandText').textContent;
+      const btn = document.getElementById('copyCommandBtn');
+
+      // 이중 복사 엔진 (API 실패 시 fallback 수행)
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(showCopied).catch(fallbackCopy);
+      } else {
+        fallbackCopy();
+      }
+
+      function fallbackCopy() {
+        const temp = document.createElement('textarea');
+        temp.value = text;
+        temp.style.position = 'fixed';
+        temp.style.opacity = '0';
+        document.body.appendChild(temp);
+        temp.select();
+        document.execCommand('copy');
+        document.body.removeChild(temp);
+        showCopied();
+      }
+
+      function showCopied() {
+        btn.innerHTML = `<span>✔ 복사 완료!</span>`;
+        btn.classList.replace('bg-sky-500', 'bg-emerald-500');
+        setTimeout(() => {
+          btn.innerHTML = `<span>📋 복사하기</span>`;
+          btn.classList.replace('bg-emerald-500', 'bg-sky-500');
+        }, 2000);
+      }
+    }
+
+    // ==========================================
+    // 3. 화면 공유 로직
+    // ==========================================
+    async function startScreenShare() {
+      try {
+        localStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+        const video = document.getElementById('screenVideo');
+        video.srcObject = localStream;
+        video.classList.remove('hidden');
+        document.getElementById('screenPlaceholder').classList.add('hidden');
+
+        localStream.getVideoTracks()[0].onended = () => {
+          stopScreenShare();
+        };
+      } catch (err) {
+        console.error("화면 공유 오류:", err);
+        alert("화면 공유 권한이 거부되었거나 취소되었습니다.");
+      }
+    }
+
+    function stopScreenShare() {
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
+      }
+      const video = document.getElementById('screenVideo');
+      video.srcObject = null;
+      video.classList.add('hidden');
+      document.getElementById('screenPlaceholder').classList.remove('hidden');
+    }
+
+    // ==========================================
+    // 4. 실시간 채팅
+    // ==========================================
+    function handleSendMessage(e) {
+      e.preventDefault();
+      const input = document.getElementById('chatInput');
+      const text = input.value.trim();
+      const user = document.getElementById('userNameInput').value.trim() || '참여자';
+
+      if (!text) return;
+
+      const messageData = { user, text, isHost, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
+      appendMessage(messageData);
+      channel.postMessage({ type: 'CHAT', payload: messageData });
+      input.value = '';
+    }
+
+    function appendMessage(data) {
+      const container = document.getElementById('chatMessages');
+      const div = document.createElement('div');
+      div.className = "bg-slate-800/40 rounded-xl p-3 border border-slate-800/80";
+      
+      div.innerHTML = `
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-xs font-bold ${data.isHost ? 'text-amber-400' : 'text-sky-400'}">${data.user} ${data.isHost ? '👑' : ''}</span>
+          <span class="text-[10px] text-slate-500">${data.time}</span>
+        </div>
+        <p class="text-xs text-slate-200 selectable-text">${escapeHtml(data.text)}</p>
+      `;
+      container.appendChild(div);
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function escapeHtml(string) {
+      return String(string).replace(/[&<>"']/g, s => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[s]);
+    }
+
+    // 브라우저 탭 간 메시지 수신 처리
+    channel.onmessage = (event) => {
+      const { type, payload } = event.data;
+      if (type === 'NOTICE') {
+        updateNoticeDisplay(payload);
+      } else if (type === 'CHAT') {
+        appendMessage(payload);
+      }
+    };
+  </script>
+</body>
+</html>
