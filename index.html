@@ -43,7 +43,7 @@
     <!-- 좌측: 화면 공유 및 공지/커맨드 영역 -->
     <div class="flex-1 flex flex-col p-4 lg:p-6 overflow-y-auto space-y-4">
       
-      <!-- 1. 커맨드 & 공지 뷰어 (청중 및 강사 공통 노출) -->
+      <!-- 1. 커맨드 & 공지 뷰어 -->
       <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center space-x-2">
@@ -56,25 +56,32 @@
           </button>
         </div>
 
-        <!-- 커맨드 박스 -->
         <div class="bg-slate-950 border border-slate-800 rounded-xl p-4 font-mono text-sm text-sky-300 selectable-text break-all">
           <pre id="commandText" class="whitespace-pre-wrap">강의가 준비 중입니다. 강사의 지침을 기다려주세요.</pre>
         </div>
       </div>
 
-      <!-- 2. 강사 전용 컨트롤 패널 (기본 숨김, 인증 후 노출) -->
+      <!-- 2. 강사 전용 컨트롤 패널 -->
       <div id="hostControlPanel" class="hidden bg-slate-900/90 border border-amber-500/30 rounded-2xl p-5 shadow-xl space-y-4">
-        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
           <h2 class="text-sm font-bold text-amber-400 flex items-center space-x-2">
             <span>⚙️ 강사 전용 컨트롤 패널</span>
           </h2>
+          
+          <!-- 화면 공유 및 웹캠 컨트롤 버튼 -->
           <div class="flex items-center space-x-2">
-            <button onclick="startScreenShare()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition">🖥️ 화면 공유 시작</button>
-            <button onclick="stopScreenShare()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold transition">중지</button>
+            <button onclick="startScreenShare()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition">🖥️ 화면 공유</button>
+            <button onclick="stopScreenShare()" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold transition">화면 중지</button>
+            
+            <span class="text-slate-700">|</span>
+
+            <button id="webcamToggleBtn" onclick="toggleWebcam()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition flex items-center space-x-1">
+              <span>📷 웹캠 켜기</span>
+            </button>
           </div>
         </div>
 
-        <!-- 지침 및 커맨드 발행 입력창 -->
+        <!-- 커맨드 발행창 -->
         <div class="space-y-2">
           <label class="text-xs text-slate-300 font-semibold">청중에게 보낼 커맨드/공지사항 작성</label>
           <div class="flex gap-2">
@@ -84,26 +91,34 @@
         </div>
       </div>
 
-      <!-- 3. 화면 공유 뷰포트 -->
+      <!-- 3. 화면 공유 및 강사 웹캠 뷰포트 (오버레이 PiP 구조) -->
       <div class="relative bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden aspect-video flex items-center justify-center shadow-2xl">
+        <!-- 화면 공유 비디오 -->
         <video id="screenVideo" autoplay playsinline class="w-full h-full object-contain hidden"></video>
+        
+        <!-- 대기 화면 -->
         <div id="screenPlaceholder" class="text-center p-6 space-y-2">
           <div class="text-4xl text-slate-600">🖥️</div>
           <p class="text-sm font-semibold text-slate-400">강의 화면이 대기 상태입니다.</p>
           <p class="text-xs text-slate-600">강사가 화면 공유를 시작하면 여기에 자동으로 표시됩니다.</p>
         </div>
+
+        <!-- 강사 웹캠 오버레이 (화면 우측 하단에 고정 표시) -->
+        <div id="webcamContainer" class="hidden absolute bottom-4 right-4 w-44 md:w-56 aspect-video rounded-xl overflow-hidden border-2 border-emerald-500/80 shadow-2xl bg-slate-900 z-20 transition-all">
+          <video id="webcamVideo" autoplay playsinline muted class="w-full h-full object-cover"></video>
+          <div class="absolute top-1.5 left-2 px-1.5 py-0.5 rounded bg-black/60 backdrop-blur text-[10px] text-emerald-400 font-bold">강사 캠</div>
+        </div>
       </div>
 
     </div>
 
-    <!-- 우측: 실시간 채팅 및 Q&A 스트림 -->
+    <!-- 우측: 실시간 채팅 영역 -->
     <div class="w-full lg:w-96 bg-slate-900 border-t lg:border-t-0 lg:border-l border-slate-800 flex flex-col h-[500px] lg:h-auto">
       <div class="p-4 border-b border-slate-800 flex items-center justify-between">
         <h2 class="text-sm font-bold text-slate-200">실시간 채팅</h2>
         <span class="text-xs text-slate-400">참여자 소통창</span>
       </div>
 
-      <!-- 메시지 목록 -->
       <div id="chatMessages" class="flex-1 p-4 overflow-y-auto space-y-3">
         <div class="bg-slate-800/50 rounded-xl p-3 border border-slate-800">
           <div class="flex items-center justify-between mb-1">
@@ -114,7 +129,6 @@
         </div>
       </div>
 
-      <!-- 메시지 입력 영역 -->
       <div class="p-3 border-t border-slate-800 bg-slate-900/50">
         <form onsubmit="handleSendMessage(event)" class="flex gap-2">
           <input id="chatInput" type="text" placeholder="메시지를 입력하세요..." class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-sky-500">
@@ -127,18 +141,16 @@
 
   <script>
     // ==========================================
-    // 1. 강사 모드 비밀번호 보안 설정 (SHA-256 해시)
-    // 기본 비밀번호: 1234
+    // 1. 강사 모드 비밀번호 보안 설정
     // ==========================================
     const HOST_PASSWORD_HASH = "257c3c6176d1322a78c4563f14f6d2927bf8e894b88307239933e5290cafea98";
     
     let isHost = false;
-    let localStream = null;
+    let screenStream = null;
+    let webcamStream = null;
 
-    // 브라우저 탭 간 실시간 통신 채널
     const channel = new BroadcastChannel('liveclass_channel');
 
-    // SHA-256 해싱 함수
     async function sha256(message) {
       const msgBuffer = new TextEncoder().encode(message);
       const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
@@ -146,12 +158,12 @@
       return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     }
 
-    // 모드 전환 및 비밀번호 확인
     async function handleModeSwitch() {
       if (isHost) {
-        // 이미 강사인 경우 청중 모드로 복귀
         if (confirm("청중 모드로 전환하시겠습니까?")) {
           isHost = false;
+          stopWebcam();
+          stopScreenShare();
           updateUIMode();
         }
         return;
@@ -214,7 +226,6 @@
       const text = document.getElementById('commandText').textContent;
       const btn = document.getElementById('copyCommandBtn');
 
-      // 이중 복사 엔진 (API 실패 시 fallback 수행)
       if (navigator.clipboard && window.isSecureContext) {
         navigator.clipboard.writeText(text).then(showCopied).catch(fallbackCopy);
       } else {
@@ -244,29 +255,29 @@
     }
 
     // ==========================================
-    // 3. 화면 공유 로직
+    // 3. 화면 공유 및 강사 웹캠 스트림 로직
     // ==========================================
     async function startScreenShare() {
       try {
-        localStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+        screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
         const video = document.getElementById('screenVideo');
-        video.srcObject = localStream;
+        video.srcObject = screenStream;
         video.classList.remove('hidden');
         document.getElementById('screenPlaceholder').classList.add('hidden');
 
-        localStream.getVideoTracks()[0].onended = () => {
+        screenStream.getVideoTracks()[0].onended = () => {
           stopScreenShare();
         };
       } catch (err) {
         console.error("화면 공유 오류:", err);
-        alert("화면 공유 권한이 거부되었거나 취소되었습니다.");
+        alert("화면 공유가 취소되었거나 권한이 없습니다.");
       }
     }
 
     function stopScreenShare() {
-      if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-        localStream = null;
+      if (screenStream) {
+        screenStream.getTracks().forEach(track => track.stop());
+        screenStream = null;
       }
       const video = document.getElementById('screenVideo');
       video.srcObject = null;
@@ -274,8 +285,54 @@
       document.getElementById('screenPlaceholder').classList.remove('hidden');
     }
 
+    // 웹캠 켜기 / 끄기 토글
+    async function toggleWebcam() {
+      if (webcamStream) {
+        stopWebcam();
+      } else {
+        await startWebcam();
+      }
+    }
+
+    async function startWebcam() {
+      try {
+        webcamStream = await navigator.mediaDevices.getUserMedia({ 
+          video: { width: { ideal: 640 }, height: { ideal: 360 } }, 
+          audio: false 
+        });
+        const webcamVideo = document.getElementById('webcamVideo');
+        webcamVideo.srcObject = webcamStream;
+        document.getElementById('webcamContainer').classList.remove('hidden');
+
+        const btn = document.getElementById('webcamToggleBtn');
+        btn.innerHTML = `<span>🛑 웹캠 끄기</span>`;
+        btn.classList.replace('bg-emerald-600', 'bg-rose-600');
+        btn.classList.replace('hover:bg-emerald-500', 'hover:bg-rose-500');
+      } catch (err) {
+        console.error("웹캠 접근 오류:", err);
+        alert("웹캠 장치를 찾을 수 없거나 브라우저 카메라 권한이 거부되었습니다.");
+      }
+    }
+
+    function stopWebcam() {
+      if (webcamStream) {
+        webcamStream.getTracks().forEach(track => track.stop());
+        webcamStream = null;
+      }
+      const webcamVideo = document.getElementById('webcamVideo');
+      webcamVideo.srcObject = null;
+      document.getElementById('webcamContainer').classList.add('hidden');
+
+      const btn = document.getElementById('webcamToggleBtn');
+      if (btn) {
+        btn.innerHTML = `<span>📷 웹캠 켜기</span>`;
+        btn.classList.replace('bg-rose-600', 'bg-emerald-600');
+        btn.classList.replace('hover:bg-rose-500', 'hover:bg-emerald-500');
+      }
+    }
+
     // ==========================================
-    // 4. 실시간 채팅
+    // 4. 실시간 채팅 로직
     // ==========================================
     function handleSendMessage(e) {
       e.preventDefault();
@@ -311,7 +368,6 @@
       return String(string).replace(/[&<>"']/g, s => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[s]);
     }
 
-    // 브라우저 탭 간 메시지 수신 처리
     channel.onmessage = (event) => {
       const { type, payload } = event.data;
       if (type === 'NOTICE') {
