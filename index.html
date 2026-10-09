@@ -107,7 +107,7 @@
 
       <!-- 3. 화면 공유 및 강사 웹캠 뷰포트 -->
       <div class="relative bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden aspect-video flex items-center justify-center shadow-2xl">
-        <video id="screenVideo" autoplay playsinline class="w-full h-full object-contain hidden"></video>
+        <video id="screenVideo" autoplay playsinline muted class="w-full h-full object-contain hidden"></video>
         
         <div id="screenPlaceholder" class="text-center p-6 space-y-2">
           <div class="text-4xl text-slate-600">🖥️</div>
@@ -312,66 +312,213 @@
     }
   </script>
 
-  <!-- 2. WebRTC (PeerJS) 연속 음성 스트리밍 엔진 -->
+  <!-- 2. WebRTC (PeerJS) 실시간 연속 음성 및 화면 영상 스트리밍 엔진 -->
   <script>
     // 강사 전용 고유 룸 ID (sirius724 전용)
     const HOST_PEER_ID = "liveclass-audio-sirius724";
 
     let peer = null;
     let liveAudioStream = null;
+    let screenStream = null;
+    let webcamStream = null;
     let isMicActive = false;
-    let connectedAudienceCalls = [];
+    let isScreenActive = false;
 
-    // 청중 모드일 때 강사에게 자동 연결
+    // 강사: 연결된 청중 ID 목록 및 활성 통화 매핑
+    const connectedAudiencePeers = new Set();
+    const activeOutgoingCalls = new Map();
+
+    // ==========================================
+    // 통합 미디어 스트림 생성 및 브로드캐스트
+    // ==========================================
+    function getBroadcastStream() {
+      const tracks = [];
+
+      // 1. 마이크 음성 트랙
+      if (isMicActive && liveAudioStream) {
+        liveAudioStream.getAudioTracks().forEach(t => tracks.push(t));
+      }
+
+      // 2. 화면 영상 트랙 (화면 공유 우선, 없을 시 웹캠 송출)
+      if (isScreenActive && screenStream) {
+        screenStream.getVideoTracks().forEach(t => tracks.push(t));
+        // 화면 공유 시 시스템/탭 오디오가 포함된 경우 함께 전송
+        screenStream.getAudioTracks().forEach(t => tracks.push(t));
+      } else if (webcamStream) {
+        webcamStream.getVideoTracks().forEach(t => tracks.push(t));
+      }
+
+      if (tracks.length === 0) return null;
+      return new MediaStream(tracks);
+    }
+
+    function broadcastToAudiences() {
+      if (!window.isHost || !peer || peer.destroyed) return;
+
+      const stream = getBroadcastStream();
+
+      if (!stream) {
+        // 송출 중인 미디어가 없으면 모든 청중 통화 종료
+        activeOutgoingCalls.forEach(call => {
+          try { call.close(); } catch (e) {}
+        });
+        activeOutgoingCalls.clear();
+        return;
+      }
+
+      // 연결된 모든 청중에게 최신 통합 스트림 전송
+      connectedAudiencePeers.forEach(peerId => {
+        sendStreamToPeer(peerId, stream);
+      });
+    }
+
+    function sendStreamToPeer(peerId, stream) {
+      if (!stream || !peer || peer.destroyed) return;
+
+      // 트랙 구성(오디오 전용 -> 오디오+비디오 등) 변경 시 깔끔한 재협상을 위해 기존 Call 정리
+      const existingCall = activeOutgoingCalls.get(peerId);
+      if (existingCall) {
+        try { existingCall.close(); } catch (e) {}
+        activeOutgoingCalls.delete(peerId);
+      }
+
+      try {
+        const call = peer.call(peerId, stream);
+        if (call) {
+          activeOutgoingCalls.set(peerId, call);
+          call.on('close', () => {
+            if (activeOutgoingCalls.get(peerId) === call) {
+              activeOutgoingCalls.delete(peerId);
+            }
+          });
+          call.on('error', (err) => {
+            console.error("통화 오류 (" + peerId + "):", err);
+            activeOutgoingCalls.delete(peerId);
+          });
+        }
+      } catch (err) {
+        console.error("스트림 전송 실패 (" + peerId + "):", err);
+      }
+    }
+
+    // ==========================================
+    // 청중 모드 수신 엔진
+    // ==========================================
     function initAudienceAudioReceiver() {
-      if (peer) peer.destroy();
+      if (peer) {
+        try { peer.destroy(); } catch (e) {}
+      }
+      connectedAudiencePeers.clear();
+      activeOutgoingCalls.clear();
 
-      peer = new Peer(); // 청중은 랜덤 ID 발급
+      peer = new Peer(); // 청중은 랜덤 고유 ID 발급
 
       peer.on('open', (id) => {
         connectToHostAudio();
       });
 
-      // 강사가 음성 스트림을 보냈을 때 수신
+      // 강사가 미디어 스트림(음성 및 화면 영상)을 전송했을 때 수신
       peer.on('call', (call) => {
-        call.answer(); // 무응답 수신 (청중 마이크는 보내지 않음)
+        call.answer(); // 단방향 수신 (청중 스트림은 전송하지 않음)
         call.on('stream', (stream) => {
-          const audioPlayer = document.getElementById('remoteAudioPlayer');
-          audioPlayer.srcObject = stream;
-          audioPlayer.play().catch(e => console.log("자동재생 권한 대기"));
-          
-          updateMicStatus(true, "강사 음성 라이브 수신 중 🟢");
+          handleRemoteStream(stream);
+        });
+        call.on('close', () => {
+          handleStreamStopped();
         });
       });
 
       peer.on('error', (err) => {
-        // 강사가 아직 연결되지 않았을 때 재시도
+        // 강사 미접속 또는 연결 지연 시 5초 후 자동 재시도
         setTimeout(connectToHostAudio, 5000);
       });
     }
 
     function connectToHostAudio() {
-      if (!peer || window.isHost) return;
+      if (!peer || window.isHost || peer.destroyed) return;
       const conn = peer.connect(HOST_PEER_ID);
       conn.on('open', () => {
-        updateMicStatus(false, "강사 오디오 룸 연결됨");
+        updateMicStatus(false, "강사 세션 연결됨 (대기)");
+      });
+      conn.on('close', () => {
+        updateMicStatus(false, "강사 세션 연결 종료됨");
       });
     }
 
-    // 화면 클릭 시 브라우저 오디오 재생 잠금 해제
+    // 화면 클릭 시 브라우저 오디오 재생 잠금 해제 (Autoplay Policy 대응)
     window.resumeAudio = function() {
       const audioPlayer = document.getElementById('remoteAudioPlayer');
       if (audioPlayer && audioPlayer.srcObject && audioPlayer.paused) {
-        audioPlayer.play();
+        audioPlayer.play().catch(() => {});
+      }
+      const screenVideo = document.getElementById('screenVideo');
+      if (screenVideo && screenVideo.srcObject && screenVideo.paused) {
+        screenVideo.play().catch(() => {});
       }
     };
+
+    function handleRemoteStream(stream) {
+      const audioTracks = stream.getAudioTracks();
+      const videoTracks = stream.getVideoTracks();
+
+      // 1. 오디오 처리
+      const audioPlayer = document.getElementById('remoteAudioPlayer');
+      if (audioTracks.length > 0) {
+        audioPlayer.srcObject = stream;
+        audioPlayer.play().catch(e => console.log("오디오 자동재생 대기"));
+        updateMicStatus(true, "강사 음성 라이브 수신 중 🟢");
+      } else {
+        audioPlayer.srcObject = null;
+        updateMicStatus(false, "강사 마이크 대기 중");
+      }
+
+      // 2. 화면 영상 처리
+      const screenVideo = document.getElementById('screenVideo');
+      const screenPlaceholder = document.getElementById('screenPlaceholder');
+
+      if (videoTracks.length > 0) {
+        screenVideo.srcObject = stream;
+        screenVideo.muted = true; // 무음 처리로 브라우저 비디오 자동재생 제한 해제
+        screenVideo.classList.remove('hidden');
+        screenPlaceholder.classList.add('hidden');
+        screenVideo.play().catch(e => console.log("화면 자동재생 대기:", e));
+
+        videoTracks[0].onended = () => {
+          handleScreenShareStopped();
+        };
+      } else {
+        handleScreenShareStopped();
+      }
+    }
+
+    function handleScreenShareStopped() {
+      const screenVideo = document.getElementById('screenVideo');
+      const screenPlaceholder = document.getElementById('screenPlaceholder');
+      if (screenVideo) {
+        screenVideo.srcObject = null;
+        screenVideo.classList.add('hidden');
+      }
+      if (screenPlaceholder) {
+        screenPlaceholder.classList.remove('hidden');
+      }
+    }
+
+    function handleStreamStopped() {
+      handleScreenShareStopped();
+      const audioPlayer = document.getElementById('remoteAudioPlayer');
+      if (audioPlayer) {
+        audioPlayer.srcObject = null;
+      }
+      updateMicStatus(false, "강사 마이크 대기 중");
+    }
 
     function updateMicStatus(isLive, text) {
       const badge = document.getElementById('micStatusBadge');
       const dot = document.getElementById('micStatusDot');
       const label = document.getElementById('micStatusText');
-      label.textContent = text;
+      if (label) label.textContent = text;
 
+      if (!badge || !dot) return;
       if (isLive) {
         badge.className = "text-[11px] px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center space-x-1 animate-pulse";
         dot.className = "w-1.5 h-1.5 rounded-full bg-emerald-400";
@@ -394,7 +541,6 @@
 
     async function startContinuousMic() {
       try {
-        // 마이크 스트림 획득 (노이즈 캔슬링 및 에코 제거 포함)
         liveAudioStream = await navigator.mediaDevices.getUserMedia({
           audio: {
             echoCancellation: true,
@@ -407,21 +553,12 @@
         isMicActive = true;
         updateHostMicUI(true);
 
-        // 강사 Peer 초기화 및 접속 대기
-        if (!peer || peer.id !== HOST_PEER_ID) {
-          if (peer) peer.destroy();
-          peer = new Peer(HOST_PEER_ID);
-
-          peer.on('connection', (conn) => {
-            // 새 청중이 접속하면 마이크 스트림 전송
-            if (liveAudioStream && isMicActive) {
-              const call = peer.call(conn.peer, liveAudioStream);
-              connectedAudienceCalls.push(call);
-            }
-          });
+        if (!peer || peer.id !== HOST_PEER_ID || peer.destroyed) {
+          initHostPeer();
         }
 
-        // 이미 연결되어 있던 청중들에게 스트림 전송
+        // 청중들에게 실시간 브로드캐스트
+        broadcastToAudiences();
         updateMicStatus(true, "마이크 송출 중 (ON) 🔴");
 
       } catch (err) {
@@ -432,19 +569,21 @@
 
     function stopContinuousMic() {
       if (liveAudioStream) {
-        // 음성 트랙 종료 (완전한 음소거)
         liveAudioStream.getTracks().forEach(t => t.stop());
         liveAudioStream = null;
       }
       isMicActive = false;
       updateHostMicUI(false);
       updateMicStatus(false, "마이크 꺼짐 (OFF)");
+
+      broadcastToAudiences();
     }
 
     function updateHostMicUI(active) {
       const btn = document.getElementById('masterMicBtn');
       const icon = document.getElementById('micBtnIcon');
       const text = document.getElementById('micBtnText');
+      if (!btn || !icon || !text) return;
 
       if (active) {
         btn.classList.replace('bg-rose-600', 'bg-emerald-600');
@@ -466,14 +605,53 @@
     // ==========================================
     const HOST_PASSWORD_HASH = "257c3c6176d1322a78c4563f14f6d2927bf8e894b88307239933e5290cafea98";
     window.isHost = false;
-    let screenStream = null;
-    let webcamStream = null;
 
     async function sha256(message) {
       const msgBuffer = new TextEncoder().encode(message);
       const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
       const hashArray = Array.from(new Uint8Array(hashBuffer));
       return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    function initHostPeer() {
+      if (peer) {
+        try { peer.destroy(); } catch (e) {}
+      }
+      connectedAudiencePeers.clear();
+      activeOutgoingCalls.clear();
+
+      peer = new Peer(HOST_PEER_ID);
+
+      peer.on('open', (id) => {
+        console.log("강사 호스트 Peer 준비 완료:", id);
+      });
+
+      peer.on('connection', (conn) => {
+        connectedAudiencePeers.add(conn.peer);
+
+        conn.on('close', () => {
+          connectedAudiencePeers.delete(conn.peer);
+          const call = activeOutgoingCalls.get(conn.peer);
+          if (call) {
+            try { call.close(); } catch(e) {}
+            activeOutgoingCalls.delete(conn.peer);
+          }
+        });
+
+        conn.on('error', () => {
+          connectedAudiencePeers.delete(conn.peer);
+        });
+
+        // 이미 활성화된 스트림이 있다면 즉시 송출
+        const stream = getBroadcastStream();
+        if (stream) {
+          sendStreamToPeer(conn.peer, stream);
+        }
+      });
+
+      peer.on('error', (err) => {
+        console.error("호스트 Peer 오류:", err);
+      });
     }
 
     async function handleModeSwitch() {
@@ -498,14 +676,7 @@
         alert("강사 인증이 완료되었습니다.");
         window.isHost = true;
         updateUIMode();
-        // 강사 모드로 전환 시 수신자 Peer 정리
-        if (peer) peer.destroy();
-        peer = new Peer(HOST_PEER_ID);
-        peer.on('connection', (conn) => {
-          if (liveAudioStream && isMicActive) {
-            peer.call(conn.peer, liveAudioStream);
-          }
-        });
+        initHostPeer();
       } else {
         alert("비밀번호가 일치하지 않습니다.");
       }
@@ -564,17 +735,32 @@
       }
     }
 
+    // ==========================================
+    // 화면 공유 스트리밍
+    // ==========================================
     async function startScreenShare() {
       try {
-        screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+        screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+        isScreenActive = true;
+
+        // 강사 로컬 비디오 화면 표시
         const video = document.getElementById('screenVideo');
+        video.muted = true; // 음소거 필수: 루프백 하울링 방지 및 자동재생 정책 보장
         video.srcObject = screenStream;
         video.classList.remove('hidden');
         document.getElementById('screenPlaceholder').classList.add('hidden');
+        video.play().catch(e => console.log("로컬 화면 재생 대기:", e));
 
         screenStream.getVideoTracks()[0].onended = () => {
           stopScreenShare();
         };
+
+        if (!peer || peer.id !== HOST_PEER_ID || peer.destroyed) {
+          initHostPeer();
+        }
+
+        // 청중들에게 화면 영상 송출 시작!
+        broadcastToAudiences();
       } catch (err) {
         console.error("화면 공유 오류:", err);
       }
@@ -585,12 +771,20 @@
         screenStream.getTracks().forEach(track => track.stop());
         screenStream = null;
       }
+      isScreenActive = false;
+
       const video = document.getElementById('screenVideo');
       video.srcObject = null;
       video.classList.add('hidden');
       document.getElementById('screenPlaceholder').classList.remove('hidden');
+
+      // 청중들에게 화면 공유 종료 반영
+      broadcastToAudiences();
     }
 
+    // ==========================================
+    // 웹캠 제어
+    // ==========================================
     async function toggleWebcam() {
       if (webcamStream) {
         stopWebcam();
@@ -606,12 +800,18 @@
           audio: false 
         });
         const webcamVideo = document.getElementById('webcamVideo');
+        webcamVideo.muted = true;
         webcamVideo.srcObject = webcamStream;
         document.getElementById('webcamContainer').classList.remove('hidden');
+        webcamVideo.play().catch(e => console.log("웹캠 재생 대기:", e));
 
         const btn = document.getElementById('webcamToggleBtn');
         btn.textContent = "🛑 캠 끄기";
         btn.classList.replace('bg-emerald-600', 'bg-rose-600');
+
+        if (!isScreenActive) {
+          broadcastToAudiences();
+        }
       } catch (err) {
         console.error("웹캠 접근 오류:", err);
       }
@@ -631,9 +831,13 @@
         btn.textContent = "📷 웹캠";
         btn.classList.replace('bg-rose-600', 'bg-emerald-600');
       }
+
+      if (!isScreenActive) {
+        broadcastToAudiences();
+      }
     }
 
-    // 청중 모드로 접속 시 즉시 오디오 수신 리스너 초기화
+    // 청중 모드로 접속 시 즉시 오디오 및 화면 수신 리스너 초기화
     window.addEventListener('DOMContentLoaded', () => {
       initAudienceAudioReceiver();
     });
