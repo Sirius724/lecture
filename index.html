@@ -91,6 +91,7 @@
             <button onclick="startScreenShare()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition">🖥️ 화면 공유</button>
             <button onclick="stopScreenShare()" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold transition">중지</button>
             <button id="webcamToggleBtn" onclick="toggleWebcam()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition">📷 웹캠</button>
+            <button onclick="clearChatHistory()" class="px-3 py-1.5 bg-rose-700 hover:bg-rose-600 text-white rounded-lg text-xs font-bold transition flex items-center space-x-1 shadow-sm"><span>🧹</span><span>채팅 초기화</span></button>
           </div>
         </div>
 
@@ -162,7 +163,9 @@
       query, 
       orderBy, 
       limit, 
-      serverTimestamp 
+      serverTimestamp, 
+      getDocs, 
+      writeBatch 
     } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -210,12 +213,60 @@
     const chatQuery = query(messagesColRef, orderBy("createdAt", "asc"), limit(100));
 
     onSnapshot(chatQuery, (snapshot) => {
+      const container = document.getElementById('chatMessages');
+      if (snapshot.empty) {
+        container.innerHTML = `
+          <div class="bg-slate-800/50 rounded-xl p-3 border border-slate-800">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-xs font-bold text-sky-400">시스템</span>
+              <span class="text-[10px] text-slate-500">안내</span>
+            </div>
+            <p class="text-xs text-slate-300">채팅창에 입장하였습니다. 강사의 마이크 음성은 실시간으로 자동 출력됩니다.</p>
+          </div>
+        `;
+        return;
+      }
       snapshot.docChanges().forEach((change) => {
         if (change.type === "added") {
-          appendMessage(change.doc.data());
+          appendMessage(change.doc.data(), change.doc.id);
+        } else if (change.type === "removed") {
+          const msgDiv = document.getElementById('msg_' + change.doc.id);
+          if (msgDiv) msgDiv.remove();
         }
       });
     });
+
+    window.clearChatHistory = async function() {
+      if (!window.isHost) {
+        alert('강사만 채팅을 초기화할 수 있습니다.');
+        return;
+      }
+      if (!confirm('현재 채팅 내역을 모두 삭제하고 초기화하시겠습니까?')) {
+        return;
+      }
+      try {
+        const snap = await getDocs(messagesColRef);
+        const batch = writeBatch(db);
+        snap.forEach(docSnap => {
+          batch.delete(docSnap.ref);
+        });
+        await batch.commit();
+        const container = document.getElementById('chatMessages');
+        container.innerHTML = `
+          <div class="bg-slate-800/50 rounded-xl p-3 border border-slate-800">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-xs font-bold text-amber-400">시스템</span>
+              <span class="text-[10px] text-slate-500">초기화</span>
+            </div>
+            <p class="text-xs text-slate-300">강사에 의해 채팅 내역이 초기화되었습니다.</p>
+          </div>
+        `;
+        alert('채팅 내역이 성공적으로 초기화되었습니다.');
+      } catch (err) {
+        console.error('채팅 초기화 실패:', err);
+        alert('채팅 초기화 실패: ' + err.message);
+      }
+    };
 
     document.getElementById('chatForm').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -239,9 +290,10 @@
       }
     });
 
-    function appendMessage(data) {
+    function appendMessage(data, docId) {
       const container = document.getElementById('chatMessages');
       const div = document.createElement('div');
+      if (docId) div.id = 'msg_' + docId;
       div.className = "bg-slate-800/40 rounded-xl p-3 border border-slate-800/80";
       
       div.innerHTML = `
