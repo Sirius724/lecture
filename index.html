@@ -40,6 +40,12 @@
         <input id="userNameInput" type="text" value="참여자" class="bg-transparent text-xs text-sky-400 font-bold focus:outline-none w-20">
       </div>
 
+      <!-- 채팅창 토글 버튼 -->
+      <button id="chatToggleBtn" onclick="toggleChat()" class="px-3 py-1.5 rounded-lg text-xs font-bold border transition flex items-center space-x-1.5 bg-slate-800 text-sky-400 border-slate-700 hover:bg-slate-700 shadow-sm" title="채팅창 켜기/끄기">
+        <span id="chatToggleIcon">💬</span>
+        <span id="chatToggleText">채팅창 숨기기</span>
+      </button>
+
       <!-- 모드 전환 버튼 -->
       <button id="modeSwitchBtn" onclick="handleModeSwitch()" class="px-3 py-1.5 rounded-lg text-xs font-bold border transition flex items-center space-x-1.5 bg-amber-500/10 text-amber-400 border-amber-500/30 hover:bg-amber-500/20">
         <span id="lockIcon">🔒</span>
@@ -106,7 +112,12 @@
       </div>
 
       <!-- 3. 화면 공유 및 강사 웹캠 뷰포트 -->
-      <div class="relative bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden aspect-video flex items-center justify-center shadow-2xl">
+      <div id="videoContainer" class="relative bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden aspect-video flex items-center justify-center shadow-2xl group">
+        <!-- 전체화면 토글 버튼 (화면 우측 상단 오버레이) -->
+        <button id="fullscreenBtn" onclick="toggleFullscreen()" class="absolute top-3 right-3 z-30 px-2.5 py-1.5 rounded-lg bg-black/60 hover:bg-black/90 border border-slate-700 text-slate-200 hover:text-white text-xs font-bold transition flex items-center space-x-1 backdrop-blur shadow-md opacity-80 hover:opacity-100" title="전체화면 토글">
+          <span id="fullscreenIcon">⛶</span>
+          <span id="fullscreenText">전체화면</span>
+        </button>
         <video id="screenVideo" autoplay playsinline muted class="w-full h-full object-contain hidden"></video>
         
         <div id="screenPlaceholder" class="text-center p-6 space-y-2">
@@ -124,7 +135,7 @@
     </div>
 
     <!-- 우측: 실시간 채팅 영역 -->
-    <div class="w-full lg:w-96 bg-slate-900 border-t lg:border-t-0 lg:border-l border-slate-800 flex flex-col h-[500px] lg:h-auto">
+    <div id="chatSection" class="w-full lg:w-96 bg-slate-900 border-t lg:border-t-0 lg:border-l border-slate-800 flex flex-col h-[500px] lg:h-auto transition-all duration-300">
       <div class="p-4 border-b border-slate-800 flex items-center justify-between">
         <h2 class="text-sm font-bold text-slate-200">실시간 채팅</h2>
         <span class="text-xs text-emerald-400 font-medium">● Firebase 연결됨</span>
@@ -835,6 +846,57 @@
       if (!isScreenActive) {
         broadcastToAudiences();
       }
+    }
+
+    // ==========================================
+    // 채팅창 숨김/표시 토글 & 동영상 전체화면 제어
+    // ==========================================
+    window.toggleChat = function() {
+      const chat = document.getElementById('chatSection');
+      const btnText = document.getElementById('chatToggleText');
+      const btnIcon = document.getElementById('chatToggleIcon');
+      if (!chat) return;
+
+      const isHidden = chat.classList.contains('hidden');
+      if (isHidden) {
+        chat.classList.remove('hidden');
+        if (btnText) btnText.textContent = '채팅창 숨기기';
+        if (btnIcon) btnIcon.textContent = '💬';
+      } else {
+        chat.classList.add('hidden');
+        if (btnText) btnText.textContent = '채팅창 보이기';
+        if (btnIcon) btnIcon.textContent = '🗨️';
+      }
+    };
+
+    window.toggleFullscreen = function() {
+      const container = document.getElementById('videoContainer');
+      if (!container) return;
+
+      if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+        if (container.requestFullscreen) {
+          container.requestFullscreen();
+        } else if (container.webkitRequestFullscreen) {
+          container.webkitRequestFullscreen();
+        }
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+          document.webkitExitFullscreen();
+        }
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+
+    function handleFullscreenChange() {
+      const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+      const btnText = document.getElementById('fullscreenText');
+      const btnIcon = document.getElementById('fullscreenIcon');
+      if (btnText) btnText.textContent = isFs ? '전체화면 종료' : '전체화면';
+      if (btnIcon) btnIcon.textContent = isFs ? '✖' : '⛶';
     }
 
     // 청중 모드로 접속 시 즉시 오디오 및 화면 수신 리스너 초기화
