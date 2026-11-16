@@ -119,6 +119,9 @@
           <span id="fullscreenText">전체화면</span>
         </button>
         <video id="screenVideo" autoplay playsinline muted class="w-full h-full object-contain hidden"></video>
+        <button id="manualPlayBtn" type="button" onclick="manualPlayVideo()" class="hidden absolute inset-0 m-auto w-fit h-fit px-4 py-2.5 rounded-xl bg-amber-500 text-slate-950 font-bold text-sm shadow-xl hover:bg-amber-400 transition z-20">
+          ▶ 화면 재생하기
+        </button>
 
         <div id="screenPlaceholder" class="text-center p-6 space-y-2">
           <div class="text-4xl text-slate-600">🖥️</div>
@@ -429,13 +432,19 @@
       });
 
       // 강사가 미디어 스트림(음성 및 화면 영상)을 전송했을 때 수신
+      let activeIncomingCall = null;
       peer.on('call', (call) => {
+        activeIncomingCall = call;
         call.answer(); // 단방향 수신 (청중 스트림은 전송하지 않음)
         call.on('stream', (stream) => {
+          if (activeIncomingCall !== call) return;
           handleRemoteStream(stream);
         });
         call.on('close', () => {
-          handleStreamStopped();
+          if (activeIncomingCall === call) {
+            activeIncomingCall = null;
+            handleStreamStopped();
+          }
         });
       });
 
@@ -468,6 +477,15 @@
       }
     };
 
+    function manualPlayVideo() {
+      const screenVideo = document.getElementById('screenVideo');
+      const manualPlayBtn = document.getElementById('manualPlayBtn');
+      if (!screenVideo) return;
+      screenVideo.play().then(() => {
+        if (manualPlayBtn) manualPlayBtn.classList.add('hidden');
+      }).catch(e => console.log("수동 재생 실패:", e));
+    }
+
     function handleRemoteStream(stream) {
       const audioTracks = stream.getAudioTracks();
       const videoTracks = stream.getVideoTracks();
@@ -492,7 +510,13 @@
         screenVideo.muted = true; // 무음 처리로 브라우저 비디오 자동재생 제한 해제
         screenVideo.classList.remove('hidden');
         screenPlaceholder.classList.add('hidden');
-        screenVideo.play().catch(e => console.log("화면 자동재생 대기:", e));
+        const manualPlayBtn = document.getElementById('manualPlayBtn');
+        screenVideo.play().then(() => {
+          if (manualPlayBtn) manualPlayBtn.classList.add('hidden');
+        }).catch(e => {
+          console.log("화면 자동재생 대기:", e);
+          if (manualPlayBtn) manualPlayBtn.classList.remove('hidden');
+        });
 
         videoTracks[0].onended = () => {
           handleScreenShareStopped();
@@ -512,6 +536,7 @@
       if (screenPlaceholder) {
         screenPlaceholder.classList.remove('hidden');
       }
+      document.getElementById('manualPlayBtn')?.classList.add('hidden');
     }
 
     function handleStreamStopped() {
