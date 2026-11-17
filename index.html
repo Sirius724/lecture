@@ -331,15 +331,67 @@
   <script>
     // 강사 전용 고유 룸 ID (sirius724 전용)
     const HOST_PEER_ID = "liveclass-audio-sirius724";
-    const PEER_CONFIG = {
-      config: {
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' },
-          { urls: 'stun:stun.cloudflare.com:3478' }
-        ]
+    // 전용 무료 TURN API URL (Metered 대시보드에서 발급받은 URL 입력 시 전용 TURN 우선 사용)
+    const METERED_TURN_API_URL = "";
+
+    const DEFAULT_ICE_SERVERS = [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun.cloudflare.com:3478' },
+      { urls: 'stun:openrelay.metered.ca:80' },
+      {
+        urls: 'turn:openrelay.metered.ca:80',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+      },
+      {
+        urls: 'turn:openrelay.metered.ca:443',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+      },
+      {
+        urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
       }
-    };
+    ];
+
+    let cachedPeerConfig = null;
+    let peerInitSeq = 0;
+
+    async function getPeerConfig() {
+      if (cachedPeerConfig) return cachedPeerConfig;
+      if (METERED_TURN_API_URL && METERED_TURN_API_URL.startsWith('http')) {
+        try {
+          const res = await fetch(METERED_TURN_API_URL);
+          if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data) && data.length > 0) {
+              cachedPeerConfig = {
+                debug: 1,
+                config: {
+                  iceServers: data,
+                  iceCandidatePoolSize: 10
+                }
+              };
+              console.log('✅ Metered 전용 TURN 서버 설정 로드 완료:', cachedPeerConfig);
+              return cachedPeerConfig;
+            }
+          }
+        } catch (err) {
+          console.warn('⚠️ Metered TURN API 조회 실패, 기본 OpenRelay TURN fallback 사용:', err);
+        }
+      }
+      cachedPeerConfig = {
+        debug: 1,
+        config: {
+          iceServers: DEFAULT_ICE_SERVERS,
+          iceCandidatePoolSize: 10
+        }
+      };
+      console.log('ℹ️ 기본 OpenRelay TURN 서버 설정 사용:', cachedPeerConfig);
+      return cachedPeerConfig;
+    }
 
     let peer = null;
     let liveAudioStream = null;
@@ -428,14 +480,17 @@
     // ==========================================
     // 청중 모드 수신 엔진
     // ==========================================
-    function initAudienceAudioReceiver() {
+    async function initAudienceAudioReceiver() {
       if (peer) {
         try { peer.destroy(); } catch (e) {}
       }
       connectedAudiencePeers.clear();
       activeOutgoingCalls.clear();
 
-      peer = new Peer(PEER_CONFIG); // 청중은 랜덤 고유 ID 발급
+      const myInitSeq = ++peerInitSeq;
+      const peerConfig = await getPeerConfig();
+      if (myInitSeq !== peerInitSeq) return;
+      peer = new Peer(peerConfig); // 청중은 랜덤 고유 ID 발급
 
       peer.on('open', (id) => {
         connectToHostAudio();
@@ -714,14 +769,17 @@
       return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     }
 
-    function initHostPeer() {
+    async function initHostPeer() {
       if (peer) {
         try { peer.destroy(); } catch (e) {}
       }
       connectedAudiencePeers.clear();
       activeOutgoingCalls.clear();
 
-      peer = new Peer(HOST_PEER_ID, PEER_CONFIG);
+      const myInitSeq = ++peerInitSeq;
+      const peerConfig = await getPeerConfig();
+      if (myInitSeq !== peerInitSeq) return;
+      peer = new Peer(HOST_PEER_ID, peerConfig);
 
       peer.on('open', (id) => {
         console.log("강사 호스트 Peer 준비 완료:", id);
